@@ -1,0 +1,12 @@
+{
+  "name": "world-clock",
+  "version": "1.0.0",
+  "description": "Simple world clock showing multiple time zones",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "keywords": ["clock", "timezone", "world-clock", "time"],
+  "author": "",
+  "license": "MIT"
+}
